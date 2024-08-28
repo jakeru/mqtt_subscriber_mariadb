@@ -11,9 +11,16 @@ import paho.mqtt.client as mqtt
 
 
 def on_connect(client, userdata, _flags, _rc, _properties):
-    topic = userdata["args"].mqtt_topic
-    logging.info("Connected to MQTT server, subscribing to '%s'", topic)
-    client.subscribe(topic, 0)
+    topics = userdata["args"].mqtt_topic
+    logging.info(
+        "Connected to MQTT server %s port %d using %s",
+        client.host,
+        client.port,
+        client.transport,
+    )
+    for topic in topics:
+        logging.info("Subscribing to topic '%s'", topic)
+        client.subscribe(topic, 0)
 
 
 def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
@@ -65,9 +72,12 @@ def parse_args():
         help="The MQTT keepalive interval (in seconds)",
     )
     parser.add_argument(
+        "-t",
         "--mqtt_topic",
-        default="#",
-        help="The topic to subscribe to",
+        required=True,
+        metavar="TOPIC",
+        action="append",
+        help="The topic(s) to subscribe to ('#' for all topics). Can be specified multiple times",
     )
     parser.add_argument(
         "--db_host",
