@@ -53,7 +53,7 @@ def parse_args():
         description="MQTT database writer",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--verbose", help="Verbose mode", action="store_true")
+    parser.add_argument("-v", "--verbose", help="Verbose mode", action="store_true")
     parser.add_argument(
         "--mqtt_host",
         default="localhost",
