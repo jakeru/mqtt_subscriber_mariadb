@@ -10,14 +10,18 @@ a specified topic and writes them to a [Maria Database](https://mariadb.org/).
     git clone https://github.com/jakeru/mqtt_subscriber_mariadb.git
     ```
 
-2. Create and activate a Python virtual environment:
+2. Install a couple of needed system packages:
+   ```sh
+   apt install libmariadb-dev gcc python3-dev
+   ```
+
+3. Create and activate a Python virtual environment:
     ``` sh
     cd mqtt_db_writer
     python3 -m venv env
     source env/bin/activate
-    ```
 
-3. Install the pip packages listed in `requirements.txt`:
+4. Install the pip packages listed in `requirements.txt`:
 
     ``` sh
     pip3 install -r requirements.txt
@@ -43,7 +47,7 @@ database can have any name.
 2. Run the application `mqtt_subscriber_mariadb.py` and supply the argument
    `--help` to get a list of possible parameters.
     ``` sh
-    ./mqtt_db.py --help
+    ./mqtt_subscriber_mariadb.py --help
     ```
 
 ## Test with `docker-compose`
@@ -55,7 +59,7 @@ Database management tool is part of this repository.
 To bring up the services, run:
 
 ``` sh
-docker-compose up -d
+docker compose up -d
 ```
 
 The `Adminer` tool can be accessed by visiting
