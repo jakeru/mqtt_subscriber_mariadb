@@ -2,12 +2,29 @@
 
 import argparse
 import logging
+import sys
 
 # requires pip package mariadb
 import mariadb
 
 # requires pip package paho-mqtt
 import paho.mqtt.client as mqtt
+
+
+def db_connect(args):
+    try:
+        dbc = mariadb.connect(
+            host=args.db_host,
+            port=args.db_port,
+            user=args.db_user,
+            password=args.db_password,
+            database=args.db_name,
+            autocommit=True,
+        )
+        logging.info(f"Connected to database server {args.db_host} as {args.db_user}")
+        return dbc.cursor()
+    except mariadb.Error as e:
+        logging.error(f"Failed to connect database server {args.db_host}: {e}")
 
 
 def on_connect(client, userdata, _flags, _rc, _properties):
@@ -24,6 +41,9 @@ def on_connect(client, userdata, _flags, _rc, _properties):
 
 
 def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+    if userdata["exit_code"] != 0:
+        # We are about to exit due to an error. No need to log anything.
+        return
     logging.warning("Disconnected from MQTT server. Will try to reconnect soon.")
 
 
@@ -31,7 +51,7 @@ def on_connect_fail(client, userdata):
     logging.debug("Failed to connect to MQTT server. Will retry soon again.")
 
 
-def on_message(_client, userdata, msg):
+def on_message(client, userdata, msg):
     cursor = userdata["cursor"]
     try:
         cursor.execute(
@@ -45,7 +65,9 @@ def on_message(_client, userdata, msg):
             cursor.lastrowid,
         )
     except mariadb.Error as e:
-        logging.error("Failed to write message to database: %s", e)
+        logging.error(f"Failed to write message to database: {e}")
+        userdata["exit_code"] = -2
+        client.disconnect()
 
 
 def parse_args():
@@ -113,19 +135,14 @@ def main():
     log_format = "%(asctime)-15s %(levelname)-7s %(name)-6s %(message)s"
     logging.basicConfig(format=log_format, level=log_level)
 
-    dbc = mariadb.connect(
-        host=args.db_host,
-        port=args.db_port,
-        user=args.db_user,
-        password=args.db_password,
-        database=args.db_name,
-        autocommit=True,
-    )
-    cursor = dbc.cursor()
+    cursor = db_connect(args)
+    if cursor is None:
+        sys.exit(-1)
 
+    userdata = {"cursor": cursor, "args": args, "exit_code": 0}
     mqttc = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,
-        userdata={"cursor": cursor, "args": args},
+        userdata=userdata,
         reconnect_on_failure=True,
     )
 
@@ -142,7 +159,7 @@ def main():
 
     # Continue the network loop & close db-connection
     mqttc.loop_forever()
-    dbc.close()
+    sys.exit(userdata["exit_code"])
 
 
 if __name__ == "__main__":
