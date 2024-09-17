@@ -1,7 +1,8 @@
 # MQTT subscriber to MariaDB
 
 A Python application that subscribes to [MQTT](https://mqtt.org/) messages with
-a specified topic and writes them to a [Maria Database](https://mariadb.org/).
+a specified topic and writes them to a [Maria Database](https://mariadb.org/) or
+a [Mongo Database](https://www.mongodb.com/).
 
 ## Installation
 
@@ -29,13 +30,16 @@ a specified topic and writes them to a [Maria Database](https://mariadb.org/).
 
 ## Database preparation
 
-This application connects to a Maria DB server and database of your choice. The
-chosen database should have a table named `messages` with the structure defined
-in
-`db_init/mqtt.sql`.
+This application connects to a MariaDB host and/or a MongoDB host.
 
-The sql script makes the assumption that the database is named `mqtt`, but the
-database can have any name.
+For MariaDB the chosen database should have a table named `messages` with the
+structure defined in `db_init/mqtt.sql`. The sql script makes the assumption
+that the database is named `mqtt`, but the database can have any name.
+
+For MongoDB no preparation of the chosen database and collection is needed.
+
+For both MariaDB and MongoDB, a user with proper write access to the chosen
+database must be created.
 
 ## Usage
 
@@ -52,11 +56,15 @@ database can have any name.
 
 ## Test with `docker-compose`
 
-A `docker-compose.yml` file that can be used to launch a
-[Maria DB server](https://mariadb.org/) and the [Adminer](https://www.adminer.org/)
-Database management tool is part of this repository.
+The file `docker-compose.yml` defines the following services which are useful
+when testing:
 
-To bring up the services, run:
+- [Maria DB server](https://mariadb.org/)
+- [MongoDB server](https://www.mongodb.com)
+- [Adminer](https://www.adminer.org/) - Database management tool for SQL
+  databases.
+
+To bring up all the services, run:
 
 ``` sh
 docker compose up -d
@@ -81,4 +89,4 @@ mosquitto_pub -d -t example_topic -m "This is a test"
 
 The `mqtt_subscriber_mariadb.py` tool should report that it has written a
 message to the database. You should also be able to see the written message
-in the database using the `Adminer` tool.
+into the Maria Database by using the `Adminer` tool.

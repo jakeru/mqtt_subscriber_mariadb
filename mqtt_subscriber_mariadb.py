@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import datetime
 import logging
 import sys
+import json
+
+# requires pip package pymongo
+import pymongo
 
 # requires pip package mariadb
 import mariadb
@@ -11,20 +16,85 @@ import mariadb
 import paho.mqtt.client as mqtt
 
 
-def db_connect(args):
-    try:
-        dbc = mariadb.connect(
-            host=args.db_host,
-            port=args.db_port,
-            user=args.db_user,
-            password=args.db_password,
-            database=args.db_name,
-            autocommit=True,
+class Backend:
+    def write(self, msg):
+        raise NotImplementedError()
+
+
+class MariaDBBackend(Backend):
+    def __init__(self, args):
+        try:
+            self.client = mariadb.connect(
+                host=args.db_host,
+                port=args.db_port,
+                user=args.db_user,
+                password=args.db_password,
+                database=args.db_name,
+                autocommit=True,
+            )
+            logging.info(
+                f"Connected to MariaDB server '{args.db_host}' as '{args.db_user}'"
+            )
+        except mariadb.Error as e:
+            logging.error(f"Failed to connect MariaDB server '{args.db_host}': {e}")
+            raise
+
+    def write(self, msg):
+        cursor = self.client.cursor()
+        try:
+            cursor.execute(
+                (
+                    f"INSERT INTO messages "
+                    "(time, topic, payload) "
+                    "VALUES (NOW(), ?, ?)"
+                ),
+                (msg.topic, msg.payload),
+            )
+            logging.debug(
+                "MariaDB: Message with topic '%s' of size %d B written with id %d",
+                msg.topic,
+                len(msg.payload),
+                cursor.lastrowid
+            )
+            return True
+        except mariadb.Error as e:
+            logging.error(f"Failed to write message to database: {e}")
+
+
+class MongoDBBackend(Backend):
+    def __init__(self, args):
+        url = (
+            f"mongodb://{args.mongodb_user}:{args.mongodb_password}@"
+            f"{args.mongodb_host}:{args.mongodb_port}/"
         )
-        logging.info(f"Connected to database server {args.db_host} as {args.db_user}")
-        return dbc.cursor()
-    except mariadb.Error as e:
-        logging.error(f"Failed to connect database server {args.db_host}: {e}")
+        self.client = pymongo.MongoClient(url)
+        self.db = self.client[args.mongodb_db]
+        self.collection = self.db[args.mongodb_collection]
+        logging.info(
+            "Connected to '%s' using database '%s' collection '%s'",
+            args.mongodb_host,
+            args.mongodb_db,
+            args.mongodb_collection,
+        )
+
+    def write(self, msg):
+        try:
+            message = json.loads(msg.payload)
+        except json.decoder.JSONDecodeError as e:
+            logging.warning("Failed to parse string '%s' as json: %s", msg.payload, e)
+            return True
+        document = {
+            "time": datetime.datetime.now(tz=datetime.timezone.utc),
+            "topic": msg.topic,
+            "message": message,
+        }
+        res = self.collection.insert_one(document)
+        logging.debug(
+            "MongoDB: Message with topic '%s' written with id '%s'",
+            msg.topic,
+            res.inserted_id,
+        )
+        return True
 
 
 def on_connect(client, userdata, _flags, _rc, _properties):
@@ -52,22 +122,11 @@ def on_connect_fail(client, userdata):
 
 
 def on_message(client, userdata, msg):
-    cursor = userdata["cursor"]
-    try:
-        cursor.execute(
-            (f"INSERT INTO messages " "(time, topic, payload) " "VALUES (NOW(), ?, ?)"),
-            (msg.topic, msg.payload),
-        )
-        logging.debug(
-            "Message to topic '%s' of size %d B written with id %d",
-            msg.topic,
-            len(msg.payload),
-            cursor.lastrowid,
-        )
-    except mariadb.Error as e:
-        logging.error(f"Failed to write message to database: {e}")
-        userdata["exit_code"] = -2
-        client.disconnect()
+    for backend in userdata["backends"]:
+        if not backend.write(msg):
+            userdata["exit_code"] = -2
+            client.disconnect()
+            break
 
 
 def parse_args():
@@ -102,28 +161,57 @@ def parse_args():
         help="The topic(s) to subscribe to ('#' for all topics). Can be specified multiple times",
     )
     parser.add_argument(
-        "--db_host",
-        default="127.0.0.1",
+        "--mariadb_host",
         help="The address to the MariaDB server",
     )
     parser.add_argument(
-        "--db_port",
+        "--mariadb_port",
         default=3306,
         type=int,
         help="The port of the MariaDB server",
     )
     parser.add_argument(
-        "--db_name",
+        "--mariadb_user",
+        help="The database user",
+    )
+    parser.add_argument(
+        "--mariadb_password",
+        help="The database password",
+    )
+    parser.add_argument(
+        "--mariadb_name",
         default="mqtt",
         help="The name of the database",
     )
     parser.add_argument(
-        "--db_user",
-        help="The database user",
+        "--mongodb_host",
+        help="MongoDB server address",
     )
     parser.add_argument(
-        "--db_password",
-        help="The database password",
+        "--mongodb_port",
+        default=27017,
+        type=int,
+        help="MongoDB server port",
+    )
+    parser.add_argument(
+        "--mongodb_db",
+        default="mqtt",
+        help="MongoDB database name",
+    )
+    parser.add_argument(
+        "--mongodb_collection",
+        default="messages",
+        help="MongoDB collection",
+    )
+    parser.add_argument(
+        "--mongodb_user",
+        default="root",
+        help="MongoDB user",
+    )
+    parser.add_argument(
+        "--mongodb_password",
+        default="",
+        help="MongoDB password",
     )
     return parser.parse_args()
 
@@ -135,11 +223,21 @@ def main():
     log_format = "%(asctime)-15s %(levelname)-7s %(name)-6s %(message)s"
     logging.basicConfig(format=log_format, level=log_level)
 
-    cursor = db_connect(args)
-    if cursor is None:
-        sys.exit(-1)
+    backends = []
+    if args.mariadb_host:
+        backends.append(MariaDBBackend(args))
+    if args.mongodb_host:
+        backends.append(MongoDBBackend(args))
 
-    userdata = {"cursor": cursor, "args": args, "exit_code": 0}
+    if not backends:
+        logging.warning(
+            (
+                "No backend specified. Hint: use '--mariadb_host' and/or "
+                "'--mongodb_host' to specify"
+            )
+        )
+
+    userdata = {"backends": backends, "args": args, "exit_code": 0}
     mqttc = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,
         userdata=userdata,

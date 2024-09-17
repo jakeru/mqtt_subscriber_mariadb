@@ -1,5 +1,5 @@
 services:
-  db:
+  mariadb:
     image: mariadb:11.5
     restart: always
     environment:
@@ -16,5 +16,17 @@ services:
     ports:
       - 127.0.0.1:8080:8080
 
+  mongodb:
+    image: mongo:7.0
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: not-a-secret
+    ports:
+      - 127.0.0.1:27017:27017
+    volumes:
+      - mongodb_data:/data/db
+
 volumes:
   mariadb_data:
+  mongodb_data:
