@@ -25,18 +25,18 @@ class MariaDBBackend(Backend):
     def __init__(self, args):
         try:
             self.client = mariadb.connect(
-                host=args.db_host,
-                port=args.db_port,
-                user=args.db_user,
-                password=args.db_password,
-                database=args.db_name,
+                host=args.mariadb_host,
+                port=args.mariadb_port,
+                user=args.mariadb_user,
+                password=args.mariadb_password,
+                database=args.mariadb_db,
                 autocommit=True,
             )
             logging.info(
-                f"Connected to MariaDB server '{args.db_host}' as '{args.db_user}'"
+                f"Connected to MariaDB server '{args.mariadb_host}' as '{args.mariadb_user}'"
             )
         except mariadb.Error as e:
-            logging.error(f"Failed to connect MariaDB server '{args.db_host}': {e}")
+            logging.error(f"Failed to connect MariaDB server '{args.mariadb_host}': {e}")
             raise
 
     def write(self, msg):
@@ -179,7 +179,7 @@ def parse_args():
         help="The database password",
     )
     parser.add_argument(
-        "--mariadb_name",
+        "--mariadb_db",
         default="mqtt",
         help="The name of the database",
     )
