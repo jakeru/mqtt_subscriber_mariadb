@@ -222,6 +222,8 @@ def main():
     log_level = logging.DEBUG if args.verbose else logging.INFO
     log_format = "%(asctime)-15s %(levelname)-7s %(name)-6s %(message)s"
     logging.basicConfig(format=log_format, level=log_level)
+    for level in (logging.DEBUG, logging.INFO):
+        logging.addLevelName(level, logging.getLevelName(level).lower())
 
     backends = []
     if args.mariadb_host:
